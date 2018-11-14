@@ -1,0 +1,118 @@
+---
+title: "Lab6_penguins"
+author: "Jeremy Knox"
+date: "11/13/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Do mean flipper lengths differe significantly for Adelie, Gentoo and Chinstrap penguins near Palmer Archipeligo?
+
+```{r}
+library(tidyverse)
+library(car)
+library(onewaytests)
+
+penguins <- read_csv("penguins.csv")
+```
+
+
+Explore the data:
+
+```{r, include=FALSE}
+# table for easy counts over multiple factors 
+counts = with(penguins, table(Species, Sex))
+View(counts)
+
+# update species info with common names using case_when()
+penguins2 = penguins %>% 
+  mutate(
+    common_name = case_when(
+      Species == "Chinstrap penguin (Pygoscelis antarctica)" ~ "Chinstrap",
+      Species == "Gentoo penguin (Pygoscelis papua)" ~ "Gentoo",
+      Species == "Adelie Penguin (Pygoscelis adeliae)" ~ "Adelie"
+    )
+  ) %>% 
+  select(-Species) %>% 
+  filter(Sex == "FEMALE") 
+```
+
+
+Exploratory graphs:
+```{r, include=FALSE}
+hist_flipper_length = ggplot(penguins2, aes(`Flipper Length (mm)`)) +
+  geom_histogram(bins = 10) +
+  facet_wrap(~ common_name, scale = "free")
+hist_flipper_length
+#somewhat bell shaped 
+
+qqs = ggplot(penguins2, aes(sample = `Flipper Length (mm)`)) +
+  geom_qq(bins = 10) +
+  facet_wrap(~ common_name, scale = "free")
+qqs
+#looks linear => noramly distributed 
+
+#how do they look compared to eachother?
+box = ggplot(penguins2, aes(common_name, `Flipper Length (mm)`)) +
+  geom_boxplot(width = .2) +
+  geom_jitter(width = 0.1, alpha = 0.5, aes(color = common_name))
+box
+```
+
+
+Levene's test for equal variances (keep in mind the general rule: if the greatest variance is less than 4 times bigger than the smallest variance, then usually those are "close enough" to assume equal variance)
+
+```{r, include=FALSE}
+variances = penguins2 %>% 
+  group_by(common_name) %>% 
+  summarize(
+    mean = mean(`Flipper Length (mm)`),
+    sd = sd(`Flipper Length (mm)`),
+    variance = var(`Flipper Length (mm)`)
+  )
+variances
+#smallest = 15, largest = 33, largest < 4*smallest 
+
+penguin_levene = leveneTest(`Flipper Length (mm)` ~ common_name, data = penguins2)
+penguin_levene
+```
+
+
+One-Way ANOVA (Type III)
+```{r, include=FALSE}
+penguin_aov = aov(`Flipper Length (mm)` ~ common_name, data = penguins2)
+penguin_sum = summary(penguin_aov)
+
+penguin_ph = TukeyHSD(penguin_aov)
+
+#Testing other opetions (for variation that allows to call values using in-line references...) There's one aov.test() in the new "onewaystests", BUT that doesn't have Tukey's for a podt-hoc pairwise comparison...
+penguin_factor = data.frame(
+  penguins2 %>% 
+  mutate(name_factor = as.factor(common_name),
+         flip_numeric = `Flipper Length (mm)`)
+)
+aov2 = aov.test(flip_numeric ~ name_factor, data = penguin_factor)
+#Yes, there are at least two means that differ signiificantly.
+#Which ones?
+
+#Bonferrono correction:
+post_hoc = paircomp(aov2, adjust.method = "bonferroni")
+#All means are significantly different from each other!
+```
+
+How do we report this outcome?
+
+Mean flipper lengths for Adelie (mean ± SD, n = ), Gentoo (mean ± sd, n = ), and Chinstrap (mean ± sd, n =) penguins all differed significantly across all groups by one-way ANOVA (F(`r aov2$parameter`) = `r aov2$statistic`, $p$ < 0.001, $\alpha$ = 0.05) with post-hox pairwise comparison by Bonferroni correction ($p$ < 0.001 for all pairwise comparisons)
+
+
+
+
+
+
+
+
+
